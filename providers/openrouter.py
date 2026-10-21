@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletion
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -123,24 +124,26 @@ def openrouter_chat(
     top_p: float | None = None,
     stop: str | list[str] | None = None,
     seed: int | None = None,
-    stream: bool = True,
+    stream: bool = False,
+    return_completion: bool = False,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: str | dict[str, Any] | None = None,
     response_format: dict[str, Any] | None = None,
     extra_headers: dict[str, str] | None = None,
     extra_body: dict[str, Any] | None = None,
-    retries: int = 10,
+    retries: int = 5,
     timeout: float | None = None,
     print_usage: bool = False,
-    markdown: bool = True,
+    markdown: bool = False,
     echo_stream: bool | None = None,
     api_key: str | None = None,
     client: OpenAI | None = None,
-) -> str:
+) -> str | ChatCompletion:
     """Call OpenRouter and return assistant text.
 
-    With ``markdown=True`` (default), notebooks render the reply as Markdown.
+    With ``markdown=True``, notebooks render the reply as Markdown.
     Streaming updates that same Markdown cell as tokens arrive.
+    With ``return_completion=True``, return the full non-streaming completion.
 
     Short form::
 
@@ -150,6 +153,9 @@ def openrouter_chat(
 
         openrouter_chat(messages=[{"role": "user", "content": "Hi"}])
     """
+    if return_completion and stream:
+        raise ValueError("return_completion=True is not supported with stream=True.")
+
     request_messages = _build_messages(message, messages, system)
     openai_client = client or get_client(api_key=api_key, timeout=timeout)
     headers = {**DEFAULT_HEADERS, **(extra_headers or {})}
@@ -199,6 +205,8 @@ def openrouter_chat(
                     print("Usage:", usage)
                 return text
         elif getattr(completion, "choices", None):
+            if return_completion:
+                return completion
             text = _message_text(completion.choices[0].message)
             if markdown:
                 _markdown_display(text)
